@@ -1,0 +1,16 @@
+GitHubへそのまま追加する手順
+
+1. このZIPを展開します。
+2. 中のファイルをGitHubリポジトリ直下へアップロードします。
+3. 特に重要:
+   .github/workflows/deploy-pages.yml
+   が必要です。
+4. GitHubのSettings → Pages → Sourceを「GitHub Actions」にします。
+5. Actionsタブで「Deploy GIF XR Converter to Pages」が実行されるのを確認します。
+
+もしGitHubのWeb画面で .github フォルダをアップロードしづらい場合:
+- このZIP内の deploy-pages.yml を開く
+- GitHubで Add file → Create new file
+- ファイル名に次をそのまま入力:
+  .github/workflows/deploy-pages.yml
+- 内容を貼り付けてCommit

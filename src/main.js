@@ -1,10 +1,8 @@
 import "./style.css";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
 document.querySelector("#app").innerHTML = `
 <div class="shell">
-  <div class="kicker">XR AUTHORING TOOL / MEDIA PREP 0.5</div>
+  <div class="kicker">XR AUTHORING TOOL / MEDIA PREP 0.6</div>
   <h1>GIF → WebM / Sprite Sheet</h1>
   <p class="sub">GIFを <b>透過VP9 WebM</b> または <b>Sprite Sheet PNG + JSON</b> に変換します。ffmpeg.wasm WorkerをViteでバンドルし、Coreは公式Usageと同じsingle-thread UMD版を読み込みます。</p>
 
@@ -63,6 +61,8 @@ document.querySelector("#app").innerHTML = `
   <div class="note"><b>XR Authoring Tool接続前提：</b> WebMまたはSprite PNG + JSONを、次段階でShared Worldの「ADD ARTWORK」へ渡せる構成にします。</div>
 </div>`;
 
+console.info("GIF XR Converter UI booted.");
+
 const $ = s => document.querySelector(s);
 const els = {
   file: $("#file"), drop: $("#drop"), previewArea: $("#previewArea"),
@@ -78,6 +78,9 @@ let inputURL = null;
 let outputURLs = [];
 let ffmpeg = null;
 let ffmpegLoaded = false;
+let FFmpegClass = null;
+let fetchFileFn = null;
+let toBlobURLFn = null;
 
 function setStatus(t,p=0){ els.status.textContent=t; const n=Math.max(0,Math.min(100,Math.round(p))); els.pct.textContent=n+"%"; els.bar.style.width=n+"%"; }
 function log(t){ els.log.textContent=(els.log.textContent+"\n"+t).split("\n").slice(-30).join("\n"); els.log.scrollTop=els.log.scrollHeight; }
@@ -111,41 +114,59 @@ async function choose(file){
 
 async function loadFFmpeg(){
   if(ffmpegLoaded) return;
-  setStatus("FFmpegを初期化中…",3);
-  ffmpeg=new FFmpeg();
-  ffmpeg.on("log",({message})=>log(message));
-  ffmpeg.on("progress",({progress})=>{
-    if(Number.isFinite(progress)) setStatus("変換中…",10+progress*85);
-  });
 
-  // @ffmpeg/ffmpeg のWorker自体はViteでローカルbundle。
-  // single-thread coreはffmpeg.wasm公式Usageと同じ UMD build を使用する。
-  // ESM coreをBlob URL化すると環境によって
-  // "Failed to import ffmpeg-core.js" になるため、ここでは使わない。
-  const baseURL="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
-  const coreURL = await toBlobURL(
-    `${baseURL}/ffmpeg-core.js`,
-    "text/javascript"
-  );
-  const wasmURL = await toBlobURL(
-    `${baseURL}/ffmpeg-core.wasm`,
-    "application/wasm"
-  );
+  try{
+    setStatus("FFmpegモジュールを読み込み中…",2);
+    log("Loading @ffmpeg/ffmpeg module…");
 
-  log("Core JS downloaded.");
-  log("Core WASM downloaded.");
+    if(!FFmpegClass || !fetchFileFn || !toBlobURLFn){
+      const ffmpegMod = await import("@ffmpeg/ffmpeg");
+      const utilMod = await import("@ffmpeg/util");
+      FFmpegClass = ffmpegMod.FFmpeg;
+      fetchFileFn = utilMod.fetchFile;
+      toBlobURLFn = utilMod.toBlobURL;
+    }
 
-  await ffmpeg.load({
-    coreURL,
-    wasmURL
-  });
-  ffmpegLoaded=true;
-  log("FFmpeg ready.");
+    log("FFmpeg module loaded.");
+    ffmpeg = new FFmpegClass();
+
+    ffmpeg.on("log",({message})=>log(message));
+    ffmpeg.on("progress",({progress})=>{
+      if(Number.isFinite(progress)) setStatus("変換中…",10+progress*85);
+    });
+
+    setStatus("FFmpeg Coreを読み込み中…",4);
+    const baseURL="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+
+    const coreURL = await toBlobURLFn(
+      `${baseURL}/ffmpeg-core.js`,
+      "text/javascript"
+    );
+    log("Core JS downloaded.");
+
+    const wasmURL = await toBlobURLFn(
+      `${baseURL}/ffmpeg-core.wasm`,
+      "application/wasm"
+    );
+    log("Core WASM downloaded.");
+
+    await ffmpeg.load({
+      coreURL,
+      wasmURL
+    });
+
+    ffmpegLoaded=true;
+    log("FFmpeg ready.");
+    setStatus("FFmpeg準備完了",8);
+  }catch(err){
+    log("FFmpeg init ERROR: " + (err?.stack || err));
+    throw err;
+  }
 }
 
 async function writeInput(){
   try{ await ffmpeg.deleteFile("input.gif"); }catch{}
-  await ffmpeg.writeFile("input.gif",await fetchFile(inputFile));
+  await ffmpeg.writeFile("input.gif",await fetchFileFn(inputFile));
 }
 
 function scaleFilter(){
