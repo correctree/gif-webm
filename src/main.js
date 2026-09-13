@@ -4,7 +4,7 @@ import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
 document.querySelector("#app").innerHTML = `
 <div class="shell">
-  <div class="kicker">XR AUTHORING TOOL / MEDIA PREP 0.4</div>
+  <div class="kicker">XR AUTHORING TOOL / MEDIA PREP 0.5</div>
   <h1>GIF → WebM / Sprite Sheet</h1>
   <p class="sub">GIFを <b>透過VP9 WebM</b> または <b>Sprite Sheet PNG + JSON</b> に変換します。ffmpeg.wasm WorkerをViteでバンドルし、Coreは公式Usageと同じsingle-thread UMD版を読み込みます。</p>
 

@@ -1,39 +1,26 @@
-GIF → WebM / Sprite Sheet Converter v0.4
+GIF → WebM / Sprite Sheet Converter v0.5
 
-この版は、前版の「@ffmpeg/ffmpeg をCDNから直接importしてWorkerを作る」方式をやめ、
-Viteで @ffmpeg/ffmpeg をアプリ本体へバンドルします。
+【今回の修正】
+v0.4でWeb公開できなくなる可能性があったGitHub Actions設定を修正しました。
 
-■ GitHub Pagesで使う
-1. このZIPを展開
-2. 中身を新しいGitHubリポジトリへアップロード
-3. Settings → Pages → Source を「GitHub Actions」にする
-4. mainブランチへpushすると自動ビルド・公開
+原因:
+package-lock.jsonを同梱していないのに setup-node の npm cache を有効にしていたため、
+GitHub Actionsが依存関係のインストール前に失敗する構成になっていました。
 
-■ Macでローカル確認
-Node.js 22以降で:
-npm install
-npm run dev
+v0.5:
+- setup-node の npm cache 指定を削除
+- npm install → npm run build
+- GitHub Pagesへ dist を公開
+- Vite base は "./" のままなのでリポジトリ名に依存しません
 
-表示された localhost URL をChromeで開いてください。
-index.htmlをダブルクリック(file://)して使う構成ではありません。
+【公開手順】
+1. ZIPを展開
+2. ZIPの「中身」をGitHubリポジトリ直下へアップロード
+   ※ gif-xr-converter-v0.5 フォルダ自体を丸ごと1階層下へ置かないでください
+3. Settings → Pages
+4. Build and deployment → Source = GitHub Actions
+5. Actionsタブで Deploy GIF XR Converter to Pages が緑の✓になるまで待つ
+6. Pages URLを開く
 
-■ 出力
-Transparent WebM:
-  VP9 + yuva420p + auto-alt-ref 0
-
-Sprite:
-  xxx-sprite.png
-  xxx-sprite.json
-
-※ 初回変換時、FFmpeg Core/WASMをCDNから読み込みます。
-
-■ v0.4 修正
-v0.3 の ESM Core 読み込みを廃止しました。
-@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.js と ffmpeg-core.wasm を
-toBlobURL() で読み込む、ffmpeg.wasm公式Usageと同じsingle-thread構成です。
-
-画面ログで
-Core JS downloaded.
-Core WASM downloaded.
-FFmpeg ready.
-まで進めばCore初期化成功です。
+まずはWeb画面が立ち上がることを確認してください。
+変換機能の確認はその次に行います。
