@@ -1,16 +1,21 @@
-GIF → WebM / Sprite Sheet Converter v0.6
+GIF → WebM / Sprite Sheet Converter v0.7
 
 今回の修正:
-- FFmpegモジュールをページ起動時に読み込まない構成へ変更。
-- まずUIを必ず表示し、CONVERTを押した時だけFFmpegをdynamic importします。
-- FFmpeg初期化に失敗しても白画面にならず、ログに原因が表示されます。
+- v0.6ではVite上なのに @ffmpeg/core の UMD build を使っていたため、
+  "failed to import ffmpeg-core.js" が発生していました。
+- ffmpeg.wasm公式Usageの注意書きに従い、Viteでは ESM build を使用します。
 
-GitHub Pages:
-1. ZIPを展開
-2. 中身をリポジトリ直下へ上書きアップロード
-3. .github/workflows/deploy-pages.yml を維持
-4. Actionsが緑の✓になるまで待つ
-5. 公開URLを再読み込み（必要ならCommand+Shift+R）
+変更:
+https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd
+↓
+https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm
 
-まず「画面が表示されること」を確認してください。
-次にGIFを選び、CONVERTを押してFFmpegログを確認します。
+GitHub Pagesへ上書き後、Actionsのデプロイ完了を待ち、
+公開ページを Command + Shift + R で強制再読み込みしてください。
+
+正常時ログ:
+Loading @ffmpeg/ffmpeg module...
+FFmpeg module loaded.
+Core JS downloaded.
+Core WASM downloaded.
+FFmpeg ready.

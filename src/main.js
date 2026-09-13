@@ -2,9 +2,9 @@ import "./style.css";
 
 document.querySelector("#app").innerHTML = `
 <div class="shell">
-  <div class="kicker">XR AUTHORING TOOL / MEDIA PREP 0.6</div>
+  <div class="kicker">XR AUTHORING TOOL / MEDIA PREP 0.7</div>
   <h1>GIF → WebM / Sprite Sheet</h1>
-  <p class="sub">GIFを <b>透過VP9 WebM</b> または <b>Sprite Sheet PNG + JSON</b> に変換します。ffmpeg.wasm WorkerをViteでバンドルし、Coreは公式Usageと同じsingle-thread UMD版を読み込みます。</p>
+  <p class="sub">GIFを <b>透過VP9 WebM</b> または <b>Sprite Sheet PNG + JSON</b> に変換します。ffmpeg.wasm WorkerをViteでバンドルし、CoreはVite向けのsingle-thread ESM版を読み込みます。</p>
 
   <div class="grid">
     <section class="card">
@@ -136,7 +136,7 @@ async function loadFFmpeg(){
     });
 
     setStatus("FFmpeg Coreを読み込み中…",4);
-    const baseURL="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+    const baseURL="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
 
     const coreURL = await toBlobURLFn(
       `${baseURL}/ffmpeg-core.js`,
