@@ -1,8 +1,9 @@
 import "./style.css";
+import {convertFresh,scaleFilter} from "./conversion.js";
 
 document.querySelector("#app").innerHTML = `
 <div class="shell">
-  <div class="kicker">XR AUTHORING TOOL / MEDIA PREP 0.8</div>
+  <div class="kicker">XR AUTHORING TOOL / MEDIA PREP 0.9.0</div>
   <h1>GIF → WebM / Sprite Sheet</h1>
   <p class="sub">GIFを、XR空間向けの <b>透過WebM</b> または <b>Sprite Sheet PNG + JSON</b> に変換します。</p>
 
@@ -44,12 +45,12 @@ document.querySelector("#app").innerHTML = `
         <button class="modeBtn" id="spriteModeBtn" type="button">SPRITE SHEET</button>
       </div>
 
-      <div class="settings" id="webmSettings">
+      <div class="settings" id="webmSettings"><label>WebM方式<select id="codec"><option value="vp8">VP8（透過・安定優先）</option><option value="vp9">VP9（高圧縮・WASMエラー時VP8へ切替）</option></select></label><label>フレーム数<select id="fps"><option value="15">15 fps</option><option value="20" selected>20 fps</option><option value="24">24 fps</option><option value="30">30 fps</option></select></label>
         <label>最大解像度
           <select id="size">
             <option value="0">Original</option>
-            <option value="2048" selected>2048 px</option>
-            <option value="1024">1024 px</option>
+            <option value="2048">2048 px</option>
+            <option value="1024" selected>1024 px</option>
             <option value="512">512 px</option>
           </select>
         </label>
@@ -131,6 +132,8 @@ const els = {
   webmSettings: $("#webmSettings"),
   spriteSettings: $("#spriteSettings"),
 
+  codec: $("#codec"),
+  fps: $("#fps"),
   size: $("#size"),
   spriteSize: $("#spriteSize"),
   cols: $("#cols"),
@@ -159,7 +162,8 @@ let outputURLs = [];
 let mode = "webm";
 
 let ffmpeg = null;
-let ffmpegLoaded = false;
+let busy=false;
+let coreURLsPromise=null;
 let FFmpegClass = null;
 let fetchFileFn = null;
 let toBlobURLFn = null;
@@ -187,6 +191,8 @@ function bytes(n) {
 }
 
 function cleanupURLs() {
+  els.videoPreview.pause();els.videoPreview.removeAttribute("src");els.videoPreview.load();
+  els.spritePreview.width=els.spritePreview.height=1;
   outputURLs.forEach((u) => URL.revokeObjectURL(u));
   outputURLs = [];
 }
@@ -198,6 +204,7 @@ function hideDownloads() {
 }
 
 function setMode(next) {
+  if(busy)return;
   mode = next;
 
   const isWebm = mode === "webm";
@@ -238,6 +245,7 @@ async function inspect(file) {
 }
 
 async function choose(file) {
+  if(busy)return;
   if (!file) return;
 
   if (!(file.type === "image/gif" || /\.gif$/i.test(file.name))) {
@@ -274,60 +282,14 @@ Resolution: ${w}x${h}
 Size: ${bytes(file.size)}`;
 }
 
-async function loadFFmpeg() {
-  if (ffmpegLoaded) return;
-
-  try {
-    setStatus("FFmpegモジュールを読み込み中…", 2);
-    log("Loading @ffmpeg/ffmpeg module…");
-
-    if (!FFmpegClass || !fetchFileFn || !toBlobURLFn) {
-      const ffmpegMod = await import("@ffmpeg/ffmpeg");
-      const utilMod = await import("@ffmpeg/util");
-
-      FFmpegClass = ffmpegMod.FFmpeg;
-      fetchFileFn = utilMod.fetchFile;
-      toBlobURLFn = utilMod.toBlobURL;
-    }
-
-    log("FFmpeg module loaded.");
-
-    ffmpeg = new FFmpegClass();
-
-    ffmpeg.on("log", ({ message }) => log(message));
-
-    ffmpeg.on("progress", ({ progress }) => {
-      if (Number.isFinite(progress)) {
-        setStatus("変換中…", 10 + progress * 80);
-      }
-    });
-
-    setStatus("FFmpeg Coreを読み込み中…", 4);
-
-    const baseURL =
-      "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
-
-    const coreURL = await toBlobURLFn(
-      `${baseURL}/ffmpeg-core.js`,
-      "text/javascript"
-    );
-    log("Core JS downloaded.");
-
-    const wasmURL = await toBlobURLFn(
-      `${baseURL}/ffmpeg-core.wasm`,
-      "application/wasm"
-    );
-    log("Core WASM downloaded.");
-
-    await ffmpeg.load({ coreURL, wasmURL });
-
-    ffmpegLoaded = true;
-    log("FFmpeg ready.");
-    setStatus("FFmpeg準備完了", 8);
-  } catch (err) {
-    log("FFmpeg init ERROR: " + (err?.stack || err));
-    throw err;
-  }
+function disposeFFmpeg(){if(ffmpeg){try{ffmpeg.terminate();}finally{ffmpeg=null;}}}
+async function loadFFmpeg(){
+ disposeFFmpeg();
+ if(!FFmpegClass){setStatus('FFmpegモジュールを読み込み中…',2);const [mod,util]=await Promise.all([import('@ffmpeg/ffmpeg'),import('@ffmpeg/util')]);FFmpegClass=mod.FFmpeg;fetchFileFn=util.fetchFile;toBlobURLFn=util.toBlobURL;}
+ if(!coreURLsPromise)coreURLsPromise=(async()=>{const urls=[];try{const base='https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm';urls.push(await toBlobURLFn(base+'/ffmpeg-core.js','text/javascript'));urls.push(await toBlobURLFn(base+'/ffmpeg-core.wasm','application/wasm'));return {coreURL:urls[0],wasmURL:urls[1]};}catch(e){urls.forEach(u=>URL.revokeObjectURL(u));coreURLsPromise=null;throw e;}})();
+ setStatus('FFmpeg Coreを読み込み中…',4);const urls=await coreURLsPromise,worker=new FFmpegClass();ffmpeg=worker;
+ worker.on('log',({message})=>log(message));worker.on('progress',({progress})=>{if(Number.isFinite(progress))setStatus('変換中…',10+Math.min(1,Math.max(0,progress))*80);});
+ try{await worker.load(urls);log('FFmpeg ready（新しい実行環境）');return worker;}catch(e){disposeFFmpeg();throw e;}
 }
 
 async function loadJSZip() {
@@ -341,45 +303,14 @@ async function writeInput() {
   await ffmpeg.writeFile("input.gif", await fetchFileFn(inputFile));
 }
 
-function scaleFilter(sizeValue) {
-  const s = Number(sizeValue);
-  if (!s) return null;
-
-  return `scale=w='min(${s},iw)':h='min(${s},ih)':force_original_aspect_ratio=decrease:flags=lanczos,scale=trunc(iw/2)*2:trunc(ih/2)*2`;
-}
 
 async function makeWebM() {
   hideDownloads();
   cleanupURLs();
 
-  await loadFFmpeg();
-  await writeInput();
-
-  try { await ffmpeg.deleteFile("output.webm"); } catch {}
-
-  const args = ["-i", "input.gif"];
-
-  const vf = scaleFilter(els.size.value);
-  if (vf) args.push("-vf", vf);
-
-  args.push(
-    "-an",
-    "-c:v", "libvpx-vp9",
-    "-pix_fmt", "yuva420p",
-    "-auto-alt-ref", "0",
-    "-b:v", "0",
-    "-crf", els.crf.value,
-    "output.webm"
-  );
-
-  log("ffmpeg " + args.join(" "));
-
-  const code = await ffmpeg.exec(args);
-  if (code !== 0) throw new Error(`FFmpeg exit code ${code}`);
-
-  const data = await ffmpeg.readFile("output.webm");
-  const blob = new Blob([data.buffer], { type: "video/webm" });
-
+  const result=await convertFresh({create:async()=>{const worker=await loadFFmpeg();ffmpeg=null;return worker;},input:new Uint8Array(await inputFile.arrayBuffer()),codec:els.codec.value,size:Number(els.size.value),crf:Number(els.crf.value),fps:Number(els.fps.value),log,onAttempt:(a,i)=>{if(i)log('再試行：'+a.codec.toUpperCase()+' / 最大'+(a.size||'元サイズ')+'px');setStatus(i?'新しい環境で再試行中…':'変換準備中…',2);}});
+  ffmpeg=null;
+  const blob = new Blob([result.data], { type: 'video/webm' });
   const url = URL.createObjectURL(blob);
   outputURLs.push(url);
 
@@ -391,7 +322,8 @@ async function makeWebM() {
   els.webmDL.download = inputFile.name.replace(/\.gif$/i, "") + ".webm";
   els.webmDL.classList.add("show");
 
-  setStatus("WebM変換完了", 100);
+  setStatus("WebM変換完了 / "+result.attempt.codec.toUpperCase(), 100);
+  log("使用方式："+result.attempt.codec.toUpperCase()+" / "+els.fps.value+"fps / "+bytes(blob.size));
 }
 
 async function makeSprite() {
@@ -435,11 +367,12 @@ async function makeSprite() {
   setStatus("Sprite Sheetを合成中…", 78);
 
   const bitmaps = [];
-
+  try {
   for (const name of names) {
     const data = await ffmpeg.readFile(name);
-    const blob = new Blob([data.buffer], { type: "image/png" });
+    const blob = new Blob([data], { type: "image/png" });
     bitmaps.push(await createImageBitmap(blob));
+    await ffmpeg.deleteFile(name);
   }
 
   const fw = bitmaps[0].width;
@@ -448,6 +381,7 @@ async function makeSprite() {
   const rows = Math.ceil(bitmaps.length / cols);
 
   const canvas = document.createElement("canvas");
+  if(fw*cols>16384||fh*rows>16384||fw*cols*fh*rows>32*1024*1024)throw new Error("Sprite Sheetが大きすぎます。最大解像度を小さくしてください。");
   canvas.width = fw * cols;
   canvas.height = fh * rows;
 
@@ -544,39 +478,17 @@ async function makeSprite() {
 
   setStatus("Sprite Sheet変換完了", 100);
   log(`Sprite done: ${names.length} frames / ${cols}x${rows}`);
+  } finally {bitmaps.forEach(bmp=>bmp.close?.());}
 }
 
-async function runWebM() {
-  if (!inputFile) return;
-
-  els.convertWebm.disabled = true;
-
-  try {
-    await makeWebM();
-  } catch (err) {
-    console.error(err);
-    log("ERROR: " + (err?.stack || err));
-    setStatus("WebM変換に失敗しました", 0);
-  } finally {
-    els.convertWebm.disabled = false;
-  }
+async function runConversion(make,label){
+ if(!inputFile||busy)return;busy=true;
+ const controls=[...document.querySelectorAll('input,select,button')],previous=controls.map(el=>el.disabled);controls.forEach(el=>el.disabled=true);
+ try{await make();}catch(err){log(label+' ERROR: '+(err?.stack||err));setStatus(label+'変換に失敗しました。Spriteへの切替もお試しください。',0);}
+ finally{disposeFFmpeg();busy=false;controls.forEach((el,i)=>el.disabled=previous[i]);els.convertWebm.disabled=els.convertSprite.disabled=!inputFile;}
 }
-
-async function runSprite() {
-  if (!inputFile) return;
-
-  els.convertSprite.disabled = true;
-
-  try {
-    await makeSprite();
-  } catch (err) {
-    console.error(err);
-    log("SPRITE ERROR: " + (err?.stack || err));
-    setStatus("Sprite変換に失敗しました", 0);
-  } finally {
-    els.convertSprite.disabled = false;
-  }
-}
+const runWebM=()=>runConversion(makeWebM,'WebM');
+const runSprite=()=>runConversion(makeSprite,'Sprite');
 
 els.file.addEventListener("change", () => choose(els.file.files?.[0]));
 
@@ -609,6 +521,7 @@ els.convertWebm.addEventListener("click", runWebM);
 els.convertSprite.addEventListener("click", runSprite);
 
 els.reset.addEventListener("click", () => {
+  if(busy)return;disposeFFmpeg();
   inputFile = null;
   els.file.value = "";
 
